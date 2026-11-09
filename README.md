@@ -18,12 +18,23 @@ et envoyer le **compte rendu** par mail.
   lien Outlook web, mail ou copie du texte.
 - **Réunions** : mode « réunion en cours » avec commentaires par point, compte rendu généré en direct,
   envoi par mail, report des commentaires dans les notes des tâches Nyblit.
+- **Collaborateurs** : annuaire (nom + e-mail, ajout en lot collé depuis Outlook). Dans l'ordre du jour et la réunion,
+  on sélectionne les participants en un clic : leurs e-mails sont remplis dans l'invitation, le mail et le compte rendu.
 - **Statistiques** : nombre de fois où chaque tâche a été mise dans un ordre du jour.
+
+### Captures d'écran
+| Tâches | Ordre du jour |
+|---|---|
+| ![Tâches](docs/screenshots/taches.png) | ![Ordre du jour](docs/screenshots/ordre-du-jour.png) |
+| **Réunion** | **Collaborateurs** |
+| ![Réunion](docs/screenshots/reunion.png) | ![Collaborateurs](docs/screenshots/collaborateurs.png) |
+
+_Données fictives._
 
 ### Architecture
 - `index.html` : interface (un seul fichier).
 - `proxy.php` : relaie les appels vers l'API. Le jeton reste côté serveur (pas de CORS, jamais exposé au navigateur).
-- `stats.php`, `meetings.php` : stockage JSON dans `data/` (statistiques, réunions).
+- `stats.php`, `meetings.php`, `contacts.php` : stockage JSON dans `data/` (statistiques, réunions, collaborateurs).
 - `config.php` (non versionné) : jeton et URL de base.
 
 ### Installation
@@ -75,12 +86,17 @@ and send the **minutes** by e-mail.
   an Outlook web link, an e-mail, or copy the text.
 - **Meetings**: a "meeting in progress" mode with a comment field per item, minutes generated live,
   e-mail sending, and pushing comments back into the Nyblit task notes.
+- **Collaborators**: a directory (name + e-mail, bulk paste from Outlook). On the agenda and in meetings you pick
+  attendees with one click: their e-mails are filled into the invitation, the mail and the minutes.
 - **Statistics**: how many times each task has been put on an agenda.
+
+### Screenshots
+See the gallery above (fake data): tasks, agenda, meeting, collaborators.
 
 ### Architecture
 - `index.html`: the UI (single file).
 - `proxy.php`: forwards calls to the API. The token stays on the server (no CORS issues, never exposed to the browser).
-- `stats.php`, `meetings.php`: JSON storage in `data/` (statistics, meetings).
+- `stats.php`, `meetings.php`, `contacts.php`: JSON storage in `data/` (statistics, meetings, collaborators).
 - `config.php` (not versioned): token and base URL.
 
 ### Installation

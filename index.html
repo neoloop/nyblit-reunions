@@ -23,9 +23,9 @@ dialog{border:1px solid var(--bd);border-radius:12px;background:var(--card);colo
 dialog label{display:block;margin:10px 0 4px;font-size:13px;color:var(--mut)}dialog input,dialog select,dialog textarea{width:100%}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:8px;display:none}
 .empty{color:var(--mut);text-align:center;padding:30px}
-.tag:empty{display:none}</style></head><body>
+.tag:empty{display:none}.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.chip{font:inherit;font-size:13px;padding:4px 10px;border-radius:99px;border:1px solid var(--bd);background:var(--card);color:var(--tx);cursor:pointer}.chip.on{background:var(--ac);color:#fff;border-color:var(--ac)}</style></head><body>
 <header><h1>Nyblit</h1>
-<nav><button data-v="tasks" class="on">Tâches</button><button data-v="projects">Projets</button><button data-v="workflows">Workflows</button><button data-v="agenda">Ordre du jour <span id="cnt" class="tag"></span></button><button data-v="meetings">Réunions</button></nav>
+<nav><button data-v="tasks" class="on">Tâches</button><button data-v="projects">Projets</button><button data-v="workflows">Workflows</button><button data-v="agenda">Ordre du jour <span id="cnt" class="tag"></span></button><button data-v="meetings">Réunions</button><button data-v="contacts">Collaborateurs</button></nav>
 <span id="me"></span></header>
 <main id="main"></main>
 <dialog id="dlg"><form method="dialog" id="frm"></form></dialog>
@@ -72,7 +72,7 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
 async function render(){
   const m=$('#main');m.innerHTML='<div class="empty">Chargement…</div>';
   try{ if(!projects.length) projects=(await api('/projects',{query:{limit:100}})).data||[]; }catch{}
-  ({tasks:viewTasks,projects:viewProjects,workflows:viewWorkflows,agenda:viewAgenda,meetings:viewMeetings})[view]();
+  ({tasks:viewTasks,projects:viewProjects,workflows:viewWorkflows,agenda:viewAgenda,meetings:viewMeetings,contacts:viewContacts})[view]();
 }
 const pname=id=>projects.find(p=>p.id===id);
 
@@ -96,7 +96,7 @@ async function viewTasks(){
       <button class="b" id="rf" title="Actualiser">↻</button></div>
       <div id="list">${list.map(t=>{const p=pname(t.project_id);return`<div class="row ${t.disposition==='done'?'done':''}">
         <input type="checkbox" title="Ajouter à l'ordre du jour" ${inAg(t.id)?'checked':''} onchange="toggleAg('${t.id}',this.checked)">
-        <button class="ic" title="Terminer" onclick="act('${t.id}','complete')">${t.disposition==='done'?'✅':'⬜'}</button>
+        <button class="ic" title="Terminer" onclick="act('${t.id}','complete')">${t.disposition==='done'?'✅':'○'}</button>
         <div class="t"><b>${esc(t.title)}</b><small>${t.due_date?'📅 '+esc(t.due_date)+' · ':''}${p?`<span class="dot" style="display:inline-block;background:${p.color}"></span> ${esc(p.name)}`:''}</small></div>
         ${statBadge(t.id)}${t.is_urgent?'<span class="tag u">urgent</span>':''}<span class="tag">${DISP[t.disposition]||t.disposition}</span>
         <button class="ic" title="Reporter à demain" onclick="later('${t.id}')">⏰</button>
@@ -211,7 +211,8 @@ function viewAgenda(){
     <div class="bar"><input id="ag_t" placeholder="Titre de la réunion" value="${esc(AG.title)}" style="flex:1;min-width:200px">
      <input type="date" id="ag_d" value="${esc(AG.date)}"><input type="time" id="ag_h" value="${esc(AG.time)}"></div>
     <div class="bar" style="margin:0"><input id="ag_l" placeholder="Lieu / lien Teams" value="${esc(AG.location)}" style="flex:1;min-width:160px">
-     <input id="ag_a" placeholder="Participants (e-mails séparés par , )" value="${esc(AG.attendees)}" style="flex:2;min-width:220px"></div></div>
+     <input id="ag_a" placeholder="Autres participants (e-mails séparés par , )" value="${esc(AG.attendees)}" style="flex:2;min-width:220px"></div>
+    <div id="ag_chips" class="chips">${chipsHtml(AG.attendees)}</div></div>
    <div id="agl">${AG.items.map((i,k)=>`<div class="row"><b style="width:22px">${k+1}.</b>
      <div class="t"><input data-k="${k}" data-f="title" value="${esc(i.title)}" style="width:100%;font-weight:600">
        <input data-k="${k}" data-f="note" placeholder="Note / décision attendue…" value="${esc(i.note)}" style="width:100%;margin-top:4px"></div>
@@ -225,6 +226,8 @@ function viewAgenda(){
      <button class="b d" id="b_clr">Vider</button></div>`;
   const bind=(id,f)=>$(id).oninput=e=>{AG[f]=e.target.value;saveAg()};
   bind('#ag_t','title');bind('#ag_d','date');bind('#ag_h','time');bind('#ag_l','location');bind('#ag_a','attendees');
+  $('#ag_a').addEventListener('input',()=>{$('#ag_chips').innerHTML=chipsHtml(AG.attendees)});
+  $('#ag_chips').onclick=chipClick(()=>AG.attendees,v=>{AG.attendees=v},()=>{$('#ag_a').value=AG.attendees;$('#ag_chips').innerHTML=chipsHtml(AG.attendees);saveAg()});
   $('#agl').oninput=e=>{const k=e.target.dataset.k,f=e.target.dataset.f;if(k==null)return;AG.items[k][f]=f==='min'?(+e.target.value||0):e.target.value;saveAg();$('#tot').textContent=totalMin()};
   $('#b_start').onclick=startMeeting;
   $('#b_copy').onclick=()=>{copyText(agendaText())};
@@ -240,6 +243,79 @@ function viewAgenda(){
   $('#b_clr').onclick=()=>{if(confirm("Vider l'ordre du jour ?")){AG.items=[];AG.id='';saveAg();viewAgenda()}};
 }
 saveAg();
+
+// ===== Collaborateurs (annuaire) =====
+let CONTACTS=[],ctT=null;
+async function loadContacts(){try{const r=await fetch('contacts.php');CONTACTS=await r.json();if(!Array.isArray(CONTACTS))CONTACTS=[]}catch{CONTACTS=[]}}
+function saveContacts(now){
+  clearTimeout(ctT);
+  const go=async()=>{try{const r=await fetch('contacts.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contacts:CONTACTS})});
+    if(!r.ok)throw new Error('Enregistrement impossible ('+r.status+')')}catch(e){toast(e.message,true)}};
+  now?go():ctT=setTimeout(go,500);
+}
+const contactName=e=>{const c=CONTACTS.find(c=>c.email.toLowerCase()===String(e).toLowerCase());return c?c.name:''};
+const attArr=s=>(s||'').split(/[,;\s]+/).filter(x=>x.includes('@'));
+const hasAtt=(s,e)=>attArr(s).some(x=>x.toLowerCase()===e.toLowerCase());
+const toggleAtt=(s,e)=>{const a=attArr(s);return(hasAtt(s,e)?a.filter(x=>x.toLowerCase()!==e.toLowerCase()):a.concat(e)).join(', ')};
+function chipsHtml(s){
+  if(!CONTACTS.length)return'<small style="color:var(--mut)">Aucun collaborateur : ajoute-en dans l\'onglet Collaborateurs.</small>';
+  const all=CONTACTS.every(c=>hasAtt(s,c.email));
+  return`<button type="button" class="chip ${all?'on':''}" data-all="1">Tous</button>`+
+    CONTACTS.map(c=>`<button type="button" class="chip ${hasAtt(s,c.email)?'on':''}" data-e="${esc(c.email)}" title="${esc(c.email)}">${esc(c.name||c.email)}</button>`).join('');
+}
+function chipClick(getS,setS,after){
+  return e=>{
+    const b=e.target.closest('.chip');if(!b)return;
+    if(b.dataset.all){
+      const all=CONTACTS.map(c=>c.email),s=getS(),every=all.every(x=>hasAtt(s,x));
+      const free=attArr(s).filter(x=>!all.some(y=>y.toLowerCase()===x.toLowerCase()));
+      setS((every?free:free.concat(all)).join(', '));
+    }else setS(toggleAtt(getS(),b.dataset.e));
+    after();
+  };
+}
+const nameFromEmail=e=>e.split('@')[0].split(/[._-]+/).filter(Boolean).map(w=>w[0].toUpperCase()+w.slice(1)).join(' ');
+const okEmail=e=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
+function addContact(name,email){
+  email=email.trim();if(!okEmail(email))return false;
+  if(CONTACTS.some(c=>c.email.toLowerCase()===email.toLowerCase()))return false;
+  CONTACTS.push({id:uuid(),name:(name||'').trim()||nameFromEmail(email),email});return true;
+}
+async function viewContacts(){
+  const M=$('#main');
+  await loadContacts();
+  const row=c=>`<div class="row" data-id="${esc(c.id)}"><input data-f="name" value="${esc(c.name)}" placeholder="Nom" style="flex:1;min-width:0"><input data-f="email" value="${esc(c.email)}" placeholder="E-mail" style="flex:1.5;min-width:0"><button class="ic d" title="Supprimer" data-del="1">🗑️</button></div>`;
+  M.innerHTML=`<div class="row" style="display:block"><b>Ajouter un collaborateur</b>
+    <div class="bar" style="margin:8px 0 0"><input id="c_n" placeholder="Nom (ex. Alice Martin)" style="flex:1;min-width:160px"><input id="c_e" placeholder="E-mail" style="flex:1.5;min-width:200px"><button class="b p" id="c_add">Ajouter</button></div>
+    <details style="margin-top:10px"><summary style="cursor:pointer;color:var(--mut)">Ajouter plusieurs (coller depuis Outlook)</summary>
+      <textarea id="c_bulk" rows="3" style="width:100%;margin-top:6px" placeholder="Alice Martin &lt;alice@exemple.fr&gt;; Bob Durand &lt;bob@exemple.fr&gt;"></textarea>
+      <button class="b" id="c_bulkadd" style="margin-top:6px">Importer</button></details></div>
+    <div id="c_list">${CONTACTS.map(row).join('')||'<div class="empty">Aucun collaborateur pour l\'instant.</div>'}</div>`;
+  $('#c_add').onclick=()=>{
+    if(!addContact($('#c_n').value,$('#c_e').value)){toast('E-mail invalide ou déjà présent',true);return}
+    saveContacts(true);viewContacts();
+  };
+  $('#c_e').onkeydown=e=>{if(e.key==='Enter')$('#c_add').click()};
+  $('#c_bulkadd').onclick=()=>{
+    let n=0;
+    $('#c_bulk').value.split(/[;\n]+/).map(x=>x.trim()).filter(Boolean).forEach(x=>{
+      const m=x.match(/^"?(.*?)"?\s*<([^<>]+)>$/);
+      if(addContact(m?m[1]:'',m?m[2]:x))n++;
+    });
+    if(!n){toast('Aucun nouvel e-mail reconnu',true);return}
+    saveContacts(true);toast(n+' collaborateur(s) ajouté(s)');viewContacts();
+  };
+  $('#c_list').oninput=e=>{
+    const r=e.target.closest('.row'),f=e.target.dataset.f;if(!r||!f)return;
+    const c=CONTACTS.find(c=>c.id===r.dataset.id);if(c){c[f]=e.target.value;saveContacts()}
+  };
+  $('#c_list').onclick=e=>{
+    const b=e.target.closest('[data-del]');if(!b)return;
+    const id=b.closest('.row').dataset.id,c=CONTACTS.find(c=>c.id===id);
+    if(!confirm('Supprimer '+(c.name||c.email)+' ?'))return;
+    CONTACTS=CONTACTS.filter(c=>c.id!==id);saveContacts(true);viewContacts();
+  };
+}
 
 // ===== Réunions =====
 let MEET={},CURID=null,saveT=null;
@@ -288,7 +364,7 @@ async function viewMeetings(){
 }
 function recapText(m){
   const L=[`Compte rendu — ${m.title}`,`${fdate(m.date,m.time)}${m.location?' · '+m.location:''}`];
-  const p=(m.attendees||'').split(/[,;]+/).map(s=>s.trim()).filter(Boolean);
+  const p=recips(m).map(e=>contactName(e)||e);
   if(p.length)L.push('Participants : '+p.join(', '));
   L.push('');
   m.items.forEach((i,k)=>{
@@ -305,6 +381,7 @@ function viewMeeting(){
      <b style="align-self:center;flex:1">${esc(m.title)} <small style="color:var(--mut);font-weight:400">${esc(fdate(m.date,m.time))}</small></b>
      <span id="sv" class="tag">Enregistré ✓</span>
      <button class="b ${done?'':'p'}" id="m_toggle">${done?'Rouvrir':'Clôturer la réunion'}</button></div>
+   <div class="row" style="display:block"><b>Participants</b><div id="m_chips" class="chips">${chipsHtml(m.attendees)}</div></div>
    ${m.items.map((i,k)=>`<div class="row" style="display:block">
      <div style="display:flex;gap:10px;align-items:center">
        <input type="checkbox" ${i.done?'checked':''} data-k="${k}" data-f="done" title="Point traité">
@@ -321,6 +398,7 @@ function viewMeeting(){
      <div class="bar" style="margin:0"><button class="b p" id="m_owa">✉️ Mail via Outlook</button><button class="b" id="m_mail">Mail (application)</button>
        <button class="b" id="m_copy">📋 Copier</button><button class="b" id="m_sync">📝 Commentaires → notes Nyblit</button></div></div></div>`;
   $('#m_back').onclick=()=>{CURID=null;viewMeetings()};
+  $('#m_chips').onclick=chipClick(()=>m.attendees,v=>{m.attendees=v},()=>{$('#m_chips').innerHTML=chipsHtml(m.attendees);$('#m_pre').textContent=recapText(m);autosave()});
   $('#m_toggle').onclick=guard(async()=>{m.status=done?'running':'done';if(!done)m.ended_at=new Date().toISOString();await persist(m);viewMeeting()});
   $('#mt').oninput=e=>{
     const t=e.target;
@@ -368,5 +446,5 @@ document.addEventListener('visibilitychange',()=>{
   if(!document.hidden&&view==='tasks'&&Date.now()-LASTLOAD>10*60*1000&&!busy())refreshTasks();
 });
 
-(async()=>{try{const me=await api('/me');$('#me').textContent=me.email||me.name||(me.user&&(me.user.email||me.user.name))||'connecté'}catch(e){$('#me').textContent='⚠️ '+e.message}render()})();
+(async()=>{try{const me=await api('/me');$('#me').textContent=me.email||me.name||(me.user&&(me.user.email||me.user.name))||'connecté'}catch(e){$('#me').textContent='⚠️ '+e.message}await loadContacts();render()})();
 </script></body></html>
