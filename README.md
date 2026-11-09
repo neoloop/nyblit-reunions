@@ -16,11 +16,14 @@ et envoyer le **compte rendu** par mail.
 - **Projets** : création, archivage, suppression. **Workflows** : lecture seule.
 - **Ordre du jour** : sélection de tâches, durées, notes, ordre, puis envoi par invitation `.ics`,
   lien Outlook web, mail ou copie du texte.
+  Possibilité d'ajouter des **points libres** (sans tâche Nyblit), y compris en pleine réunion.
 - **Réunions** : mode « réunion en cours » avec commentaires par point, compte rendu généré en direct,
   envoi par mail.
 - **Retour vers Nyblit** : depuis l'interface, les commentaires saisis pendant la réunion sont renvoyés dans les notes
   des tâches (bouton « Commentaires → notes Nyblit », ajoutés à la suite avec la date et le titre de la réunion, sans écraser l'existant).
-  Pendant la séance, ✅ termine la tâche et ⏰ la reporte au lendemain 8h ; l'échéance se modifie aussi depuis la fiche de la tâche (✏️).
+  Pendant la séance, ✅ termine la tâche, ⏰ la reporte au lendemain 8h, et un sélecteur de date modifie son échéance dans Nyblit.
+  La date et l'heure de la réunion sont modifiables dans la vue réunion.
+- **Mobile** : interface adaptée à l'iPhone (navigation défilante, lignes de tâches sur deux niveaux, boutons tactiles).
 - **Collaborateurs** : annuaire (nom + e-mail, ajout en lot collé depuis Outlook). Dans l'ordre du jour et la réunion,
   on sélectionne les participants en un clic : leurs e-mails sont remplis dans l'invitation, le mail et le compte rendu.
 - **Statistiques** : nombre de fois où chaque tâche a été mise dans un ordre du jour.
@@ -87,11 +90,14 @@ and send the **minutes** by e-mail.
 - **Projects**: create, archive, delete. **Workflows**: read-only.
 - **Agenda**: pick tasks, set durations, notes and order, then send it as an `.ics` invitation,
   an Outlook web link, an e-mail, or copy the text.
+  You can add **free-form items** (no Nyblit task), including during a meeting.
 - **Meetings**: a "meeting in progress" mode with a comment field per item, minutes generated live,
   and e-mail sending.
 - **Sync back to Nyblit**: from the UI, comments typed during a meeting are pushed into the Nyblit task notes
   ("Commentaires → notes Nyblit" button, appended with the date and meeting title, never overwriting existing notes).
-  During the meeting, ✅ completes the task and ⏰ postpones it to tomorrow 8am; the due date can also be changed from the task edit form (✏️).
+  During the meeting, ✅ completes the task, ⏰ postpones it to tomorrow 8am, and a date picker changes its due date in Nyblit.
+  The meeting date and time can be edited in the meeting view.
+- **Mobile**: iPhone-friendly layout (scrollable navigation, two-line task rows, touch-sized buttons).
 - **Collaborators**: a directory (name + e-mail, bulk paste from Outlook). On the agenda and in meetings you pick
   attendees with one click: their e-mails are filled into the invitation, the mail and the minutes.
 - **Statistics**: how many times each task has been put on an agenda.

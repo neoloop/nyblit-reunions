@@ -23,7 +23,21 @@ dialog{border:1px solid var(--bd);border-radius:12px;background:var(--card);colo
 dialog label{display:block;margin:10px 0 4px;font-size:13px;color:var(--mut)}dialog input,dialog select,dialog textarea{width:100%}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:8px;display:none}
 .empty{color:var(--mut);text-align:center;padding:30px}
-.tag:empty{display:none}.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.chip{font:inherit;font-size:13px;padding:4px 10px;border-radius:99px;border:1px solid var(--bd);background:var(--card);color:var(--tx);cursor:pointer}.chip.on{background:var(--ac);color:#fff;border-color:var(--ac)}</style></head><body>
+.tag:empty{display:none}.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.chip{font:inherit;font-size:13px;padding:4px 10px;border-radius:99px;border:1px solid var(--bd);background:var(--card);color:var(--tx);cursor:pointer}.chip.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.acts{display:flex;align-items:center}
+.addpt{display:flex;gap:8px;flex-wrap:wrap}.addpt input[type=text]{flex:1;min-width:180px}
+@media(max-width:640px){
+  body{font-size:16px}input,select,textarea{font-size:16px}
+  header{flex-wrap:wrap;gap:6px;padding:8px 10px}#me{display:none}
+  nav{flex:1 1 100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}nav::-webkit-scrollbar{display:none}
+  nav button{white-space:nowrap;padding:8px 10px}
+  main{padding:10px}
+  .row{flex-wrap:wrap;gap:8px}.row .t{flex:1 1 55%}.row .t b{white-space:normal}
+  .trow .t{flex:1 1 calc(100% - 90px)}.trow .acts{width:100%;justify-content:space-between;border-top:1px solid var(--bd);padding-top:4px}
+  .ic{padding:8px 10px;font-size:18px}
+  .bar>*{flex:1 1 auto}.bar input[type=date],.bar input[type=time]{flex:1 1 40%}
+  #toast{max-width:92vw;text-align:center}
+}</style></head><body>
 <header><h1>Nyblit</h1>
 <nav><button data-v="tasks" class="on">Tâches</button><button data-v="projects">Projets</button><button data-v="workflows">Workflows</button><button data-v="agenda">Ordre du jour <span id="cnt" class="tag"></span></button><button data-v="meetings">Réunions</button><button data-v="contacts">Collaborateurs</button></nav>
 <span id="me"></span></header>
@@ -94,15 +108,15 @@ async function viewTasks(){
       <label style="align-self:center"><input type="checkbox" id="fa" ${state.arch?'checked':''}> archivées</label>
       <span style="flex:1"></span><small style="align-self:center;color:var(--mut)">${list.length} tâche(s) · màj ${new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</small>
       <button class="b" id="rf" title="Actualiser">↻</button></div>
-      <div id="list">${list.map(t=>{const p=pname(t.project_id);return`<div class="row ${t.disposition==='done'?'done':''}">
+      <div id="list">${list.map(t=>{const p=pname(t.project_id);return`<div class="row trow ${t.disposition==='done'?'done':''}">
         <input type="checkbox" title="Ajouter à l'ordre du jour" ${inAg(t.id)?'checked':''} onchange="toggleAg('${t.id}',this.checked)">
         <button class="ic" title="Terminer" onclick="act('${t.id}','complete')">${t.disposition==='done'?'✅':'○'}</button>
         <div class="t"><b>${esc(t.title)}</b><small>${t.due_date?'📅 '+esc(t.due_date)+' · ':''}${p?`<span class="dot" style="display:inline-block;background:${p.color}"></span> ${esc(p.name)}`:''}</small></div>
         ${statBadge(t.id)}${t.is_urgent?'<span class="tag u">urgent</span>':''}<span class="tag">${DISP[t.disposition]||t.disposition}</span>
-        <button class="ic" title="Reporter à demain" onclick="later('${t.id}')">⏰</button>
+        <span class="acts"><button class="ic" title="Reporter à demain" onclick="later('${t.id}')">⏰</button>
         <button class="ic" title="Modifier" onclick="editTask('${t.id}')">✏️</button>
         <button class="ic" title="${t.archived?'Désarchiver':'Archiver'}" onclick="act('${t.id}','${t.archived?'unarchive':'archive'}')">📦</button>
-        <button class="ic d" title="Supprimer" onclick="delTask('${t.id}')">🗑️</button></div>`}).join('')||'<div class="empty">Aucune tâche</div>'}</div>
+        <button class="ic d" title="Supprimer" onclick="delTask('${t.id}')">🗑️</button></span></div>`}).join('')||'<div class="empty">Aucune tâche</div>'}</div>
       ${more?'<div class="empty">Plus de 1000 tâches : affine avec les filtres.</div>':''}`;
     $('#add').onclick=guard(async()=>{const v=$('#nt').value.trim();if(!v)return;
       await api('/tasks',{method:'POST',body:{title:v,...(state.proj?{project_id:state.proj}:{})},headers:{'Idempotency-Key':uuid()}});toast('Tâche créée');viewTasks()});
@@ -197,13 +211,15 @@ function ics(){
   return L.map(fold).join('\r\n')+'\r\n';
 }
 async function trackSent(){
-  if(!AG.items.length)return;
+  if(!AG.items.some(i=>i.id))return;
   if(!AG.id){AG.id=uuid();saveAg()}
-  try{const r=await fetch('stats.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agenda_id:AG.id,task_ids:AG.items.map(i=>i.id)})});
+  try{const r=await fetch('stats.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agenda_id:AG.id,task_ids:AG.items.map(i=>i.id).filter(Boolean)})});
     if(r.ok){STATS=await r.json();toast('Compté dans les stats')}}catch{}
 }
 function needDate(){if(!AG.date){toast('Choisis une date',true);return false}if(!AG.items.length){toast('Ordre du jour vide',true);return false}return true}
 window.move=(k,d)=>{const j=k+d;if(j<0||j>=AG.items.length)return;[AG.items[k],AG.items[j]]=[AG.items[j],AG.items[k]];saveAg();viewAgenda()};
+window.addPoint=()=>{const t=$('#ap_t'),v=t.value.trim();if(!v){t.focus();return}
+  AG.items.push({id:null,title:v,min:+$('#ap_m').value||10,note:'',custom:true});saveAg();viewAgenda()};
 window.rmAg=k=>{AG.items.splice(k,1);saveAg();viewAgenda()};
 function viewAgenda(){
   const m=$('#main');
@@ -218,7 +234,10 @@ function viewAgenda(){
        <input data-k="${k}" data-f="note" placeholder="Note / décision attendue…" value="${esc(i.note)}" style="width:100%;margin-top:4px"></div>
      <input type="number" min="1" data-k="${k}" data-f="min" value="${i.min}" style="width:70px"><small>min</small>
      <button class="ic" onclick="move(${k},-1)">▲</button><button class="ic" onclick="move(${k},1)">▼</button><button class="ic d" onclick="rmAg(${k})">✖</button></div>`).join('')
-     ||'<div class="empty">Coche des tâches dans l\'onglet Tâches pour les ajouter ici.</div>'}</div>
+     ||'<div class="empty">Coche des tâches dans l\'onglet Tâches, ou ajoute un point libre ci-dessous.</div>'}</div>
+   <div class="row" style="display:block"><b>Ajouter un point (sans tâche)</b>
+     <div class="addpt" style="margin-top:8px"><input type="text" id="ap_t" placeholder="Ex. Point divers, tour de table…"><input type="number" min="1" id="ap_m" value="10" style="width:80px"><small style="align-self:center">min</small>
+     <button class="b" id="ap_b">+ Ajouter</button></div></div>
    <div class="bar"><b style="align-self:center">Total : <span id="tot">${totalMin()}</span> min</b>
      <span style="flex:1"></span>
      <button class="b p" id="b_start">▶ Démarrer la réunion</button><button class="b" id="b_copy">📋 Copier</button><button class="b" id="b_mail">✉️ Mail</button>
@@ -229,6 +248,7 @@ function viewAgenda(){
   $('#ag_a').addEventListener('input',()=>{$('#ag_chips').innerHTML=chipsHtml(AG.attendees)});
   $('#ag_chips').onclick=chipClick(()=>AG.attendees,v=>{AG.attendees=v},()=>{$('#ag_a').value=AG.attendees;$('#ag_chips').innerHTML=chipsHtml(AG.attendees);saveAg()});
   $('#agl').oninput=e=>{const k=e.target.dataset.k,f=e.target.dataset.f;if(k==null)return;AG.items[k][f]=f==='min'?(+e.target.value||0):e.target.value;saveAg();$('#tot').textContent=totalMin()};
+  $('#ap_b').onclick=addPoint;$('#ap_t').onkeydown=e=>{if(e.key==='Enter')addPoint()};
   $('#b_start').onclick=startMeeting;
   $('#b_copy').onclick=()=>{copyText(agendaText())};
   $('#b_mail').onclick=()=>{trackSent();
@@ -339,7 +359,7 @@ window.startMeeting=guard(async()=>{
   const id=AG.id||uuid();
   const m={id,title:AG.title||'Réunion',date:AG.date,time:AG.time,location:AG.location,attendees:AG.attendees,status:'running',
     started_at:new Date().toISOString(),notes:'',
-    items:AG.items.map(i=>({id:i.id,title:i.title,min:i.min,note:i.note||'',comment:'',done:false}))};
+    items:AG.items.map(i=>({id:i.id||null,title:i.title,min:i.min,note:i.note||'',comment:'',done:false}))};
   await persist(m);MEET[id]=m;
   AG.items=[];AG.id='';saveAg();
   CURID=id;view='meetings';syncNav();render();
@@ -378,7 +398,8 @@ function viewMeeting(){
   const m=MEET[CURID],M=$('#main'),done=m.status==='done';
   M.innerHTML=`<div id="mt">
    <div class="bar"><button class="b" id="m_back">← Réunions</button>
-     <b style="align-self:center;flex:1">${esc(m.title)} <small style="color:var(--mut);font-weight:400">${esc(fdate(m.date,m.time))}</small></b>
+     <b style="align-self:center;flex:1;min-width:140px">${esc(m.title)}</b>
+     <input type="date" id="m_d" value="${esc(m.date||'')}" title="Date de la réunion"><input type="time" id="m_h" value="${esc(m.time||'')}">
      <span id="sv" class="tag">Enregistré ✓</span>
      <button class="b ${done?'':'p'}" id="m_toggle">${done?'Rouvrir':'Clôturer la réunion'}</button></div>
    <div class="row" style="display:block"><b>Participants</b><div id="m_chips" class="chips">${chipsHtml(m.attendees)}</div></div>
@@ -387,16 +408,23 @@ function viewMeeting(){
        <input type="checkbox" ${i.done?'checked':''} data-k="${k}" data-f="done" title="Point traité">
        <b style="flex:1;${i.done?'text-decoration:line-through;color:var(--mut)':''}">${k+1}. ${esc(i.title)}</b>
        <small>${esc(i.min)} min</small>
-       <button class="ic" title="Terminer la tâche dans Nyblit" onclick="mTask(${k},'complete')">✅</button>
-       <button class="ic" title="Reporter la tâche à demain" onclick="mTask(${k},'later')">⏰</button></div>
+       ${i.id?`<button class="ic" title="Terminer la tâche dans Nyblit" onclick="mTask(${k},'complete')">✅</button>
+       <button class="ic" title="Reporter la tâche à demain" onclick="mTask(${k},'later')">⏰</button>`:`<span class="tag">point libre</span><button class="ic d" title="Retirer ce point" onclick="mDelPoint(${k})">✖</button>`}</div>
+     ${i.id?`<div style="margin-top:6px"><small>📅 Échéance de la tâche : </small><input type="date" value="${esc((i.due!==undefined?i.due:((cache[i.id]||{}).due_date||'')).slice(0,10))}" onchange="mDue(${k},this.value)" style="padding:4px 8px"></div>`:''}
      ${i.note?`<small style="color:var(--mut)">Prévu : ${esc(i.note)}</small>`:''}
      <textarea data-k="${k}" data-f="comment" rows="2" placeholder="Commentaires / décisions…" style="width:100%;margin-top:6px">${esc(i.comment)}</textarea></div>`).join('')}
+   <div class="row" style="display:block"><b>Ajouter un point en séance</b>
+     <div class="addpt" style="margin-top:8px"><input type="text" id="mp_t" placeholder="Point non prévu (sans tâche)…"><button class="b" id="mp_b">+ Ajouter</button></div></div>
    <div class="row" style="display:block"><b>Notes générales</b>
      <textarea id="m_notes" rows="3" style="width:100%;margin-top:6px" placeholder="Divers, points non prévus…">${esc(m.notes)}</textarea></div>
    <div class="row" style="display:block"><b>Compte rendu</b>
      <pre id="m_pre" style="white-space:pre-wrap;font:inherit;margin:8px 0">${esc(recapText(m))}</pre>
      <div class="bar" style="margin:0"><button class="b p" id="m_owa">✉️ Mail via Outlook</button><button class="b" id="m_mail">Mail (application)</button>
        <button class="b" id="m_copy">📋 Copier</button><button class="b" id="m_sync">📝 Commentaires → notes Nyblit</button></div></div></div>`;
+  $('#m_d').onchange=e=>{m.date=e.target.value;$('#m_pre').textContent=recapText(m);autosave()};
+  $('#m_h').onchange=e=>{m.time=e.target.value;$('#m_pre').textContent=recapText(m);autosave()};
+  const addP=guard(async()=>{const v=$('#mp_t').value.trim();if(!v)return;m.items.push({id:null,title:v,min:10,note:'',comment:'',done:false});await persist(m);viewMeeting()});
+  $('#mp_b').onclick=addP;$('#mp_t').onkeydown=e=>{if(e.key==='Enter')addP()};
   $('#m_back').onclick=()=>{CURID=null;viewMeetings()};
   $('#m_chips').onclick=chipClick(()=>m.attendees,v=>{m.attendees=v},()=>{$('#m_chips').innerHTML=chipsHtml(m.attendees);$('#m_pre').textContent=recapText(m);autosave()});
   $('#m_toggle').onclick=guard(async()=>{m.status=done?'running':'done';if(!done)m.ended_at=new Date().toISOString();await persist(m);viewMeeting()});
@@ -423,10 +451,17 @@ window.mTask=guard(async(k,a)=>{
     await write('/tasks/'+i.id+'/complete','POST');i.done=true;await persist(m);viewMeeting();toast('Tâche terminée dans Nyblit');
   }
 });
+window.mDelPoint=guard(async k=>{const m=MEET[CURID];m.items.splice(k,1);await persist(m);viewMeeting()});
+window.mDue=guard(async(k,v)=>{
+  const m=MEET[CURID],i=m.items[k];
+  await write('/tasks/'+i.id,'PATCH',{due_date:v||null});
+  i.due=v||'';if(cache[i.id])cache[i.id].due_date=v||null;await persist(m);
+  toast(v?'Échéance mise à jour dans Nyblit':'Échéance retirée dans Nyblit');
+});
 window.mSync=guard(async()=>{
   const m=MEET[CURID];let n=0;
   for(const i of m.items){
-    const c=(i.comment||'').trim();if(!c||i.synced===c)continue;
+    const c=(i.comment||'').trim();if(!i.id||!c||i.synced===c)continue;
     const cur=await api('/tasks/'+i.id);
     const stamp=`[${new Date(m.date+'T12:00').toLocaleDateString('fr-FR')} · ${m.title}] ${c}`;
     await api('/tasks/'+i.id,{method:'PATCH',body:{notes:(cur.notes?cur.notes+'\n\n':'')+stamp},headers:cur._etag?{'If-Match':cur._etag}:{}});
