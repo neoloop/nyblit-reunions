@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nyblit</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1b1f27;--mut:#6b7280;--ac:#2358E0;--bd:#e3e6eb;--ok:#16a34a;--ko:#dc2626}
+@media(prefers-color-scheme:dark){:root{--bg:#14161a;--card:#1d2026;--tx:#e8eaee;--mut:#9aa1ad;--bd:#2c313a}}
+*{box-sizing:border-box}body{margin:0;font:15px system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+header{display:flex;align-items:center;gap:16px;padding:12px 20px;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:5}
+header h1{font-size:17px;margin:0}nav{display:flex;gap:4px;flex:1}
+nav button{background:none;border:0;padding:8px 12px;border-radius:8px;cursor:pointer;color:var(--mut);font:inherit}
+nav button.on{background:var(--ac);color:#fff}#me{color:var(--mut);font-size:13px}
+main{max-width:900px;margin:0 auto;padding:20px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+input,select,textarea,button.b{font:inherit;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)}
+button.b{cursor:pointer}button.p{background:var(--ac);color:#fff;border-color:var(--ac)}button.d:hover{color:var(--ko)}
+.row{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.row .t{flex:1;min-width:0}.row .t b{display:block;overflow:hidden;text-overflow:ellipsis}.row small{color:var(--mut)}
+.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--bg);border:1px solid var(--bd);color:var(--mut)}
+.tag.u{color:var(--ko);border-color:var(--ko)}.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.done b{text-decoration:line-through;color:var(--mut)}
+.ic{background:none;border:0;cursor:pointer;font-size:16px;padding:4px 6px;color:var(--mut)}.ic:hover{color:var(--ac)}
+dialog{border:1px solid var(--bd);border-radius:12px;background:var(--card);color:var(--tx);width:min(520px,94vw)}
+dialog label{display:block;margin:10px 0 4px;font-size:13px;color:var(--mut)}dialog input,dialog select,dialog textarea{width:100%}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:8px;display:none}
+.empty{color:var(--mut);text-align:center;padding:30px}
+.tag:empty{display:none}</style></head><body>
+<header><h1>Nyblit</h1>
+<nav><button data-v="tasks" class="on">Tâches</button><button data-v="projects">Projets</button><button data-v="workflows">Workflows</button><button data-v="agenda">Ordre du jour <span id="cnt" class="tag"></span></button><button data-v="meetings">Réunions</button></nav>
+<span id="me"></span></header>
+<main id="main"></main>
+<dialog id="dlg"><form method="dialog" id="frm"></form></dialog>
+<div id="toast"></div>
+<script>
+const API='proxy.php';
+const SIGNATURE=''; // signature ajoutée en bas des mails (laisser vide pour ne rien ajouter)
+const DISP={not_started:'À faire',in_progress:'En cours',waiting:'En attente',on_hold:'Reporté',done:'Terminé'};
+const uuid=()=>'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&3|8)).toString(16)});
+const qs=o=>Object.entries(o).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&');
+function copyText(t){
+  const ok=()=>toast('Copié');
+  if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(t).then(ok,()=>toast('Copie impossible',true));return}
+  const a=document.createElement('textarea');a.value=t;a.style.cssText='position:fixed;opacity:0';document.body.appendChild(a);a.select();
+  try{document.execCommand('copy')?ok():toast('Copie impossible',true)}catch{toast('Copie impossible',true)}a.remove();
+}
+let LASTLOAD=0;
+const cache={};let STATS={};
+async function loadStats(){try{STATS=await (await fetch('stats.php')).json()}catch{}}
+const statBadge=id=>{const x=STATS[id];if(!x||!x.count)return'';const d=x.last?new Date(x.last).toLocaleDateString('fr-FR'):'';return`<span class="tag" title="Inscrite en ordre du jour ${x.count} fois, dernière le ${d}">📋 ${x.count}× · ${d}</span>`};
+let view='tasks',projects=[],state={disp:'',proj:'',arch:false,cursor:null};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(m,err){const t=$('#toast');t.textContent=m;t.style.background=err?'#dc2626':'';t.style.color=err?'#fff':'';t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',3500)}
+
+async function api(path,{method='GET',query={},body,headers={}}={}){
+  const qs=new URLSearchParams({p:path,...Object.fromEntries(Object.entries(query).filter(([,v])=>v!==''&&v!=null&&v!==false))});
+  const r=await fetch(API+'?'+qs,{method,headers:{...(body?{'Content-Type':'application/json'}:{}),...headers},body:body?JSON.stringify(body):undefined});
+  const txt=await r.text();let data={};try{data=JSON.parse(txt)}catch{}
+  if(!r.ok){const e=new Error(data.detail||data.title||('Erreur '+r.status));e.status=r.status;throw e}
+  data._etag=r.headers.get('X-Nyb-etag');return data;
+}
+// Écriture sur ressource existante : relit l'ETag courant puis envoie If-Match
+async function write(path,method,body){
+  const cur=await api(path.replace(/\/(complete|later|archive|unarchive)$/,''));
+  const h=cur._etag?{'If-Match':cur._etag}:{};
+  return api(path,{method,body,headers:h});
+}
+const guard=fn=>async(...a)=>{try{await fn(...a)}catch(e){toast(e.message,true)}};
+
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));view=b.dataset.v;if(view==='meetings')CURID=null;render()});
+
+async function render(){
+  const m=$('#main');m.innerHTML='<div class="empty">Chargement…</div>';
+  try{ if(!projects.length) projects=(await api('/projects',{query:{limit:100}})).data||[]; }catch{}
+  ({tasks:viewTasks,projects:viewProjects,workflows:viewWorkflows,agenda:viewAgenda,meetings:viewMeetings})[view]();
+}
+const pname=id=>projects.find(p=>p.id===id);
+
+async function viewTasks(){
+  const m=$('#main');
+  try{
+    let list=[],cursor='',pages=0,more=false;
+    do{
+      const r=await api('/tasks',{query:{limit:100,cursor,disposition:state.disp,project_id:state.proj,include_archived:state.arch}});
+      list=list.concat(r.data||[]);cursor=r.next_cursor||'';more=!!(r.has_more&&cursor);pages++;
+    }while(more&&pages<10);
+    list.forEach(t=>cache[t.id]=t);await loadStats();LASTLOAD=Date.now();
+    m.innerHTML=`<div class="bar">
+      <input id="nt" placeholder="Nouvelle tâche…" style="flex:1;min-width:180px">
+      <button class="b p" id="add">Ajouter</button></div>
+      <div class="bar">
+      <select id="fd"><option value="">Toutes</option>${Object.entries(DISP).map(([k,v])=>`<option value="${k}" ${state.disp===k?'selected':''}>${v}</option>`).join('')}</select>
+      <select id="fp"><option value="">Tous projets</option>${projects.map(p=>`<option value="${p.id}" ${state.proj===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
+      <label style="align-self:center"><input type="checkbox" id="fa" ${state.arch?'checked':''}> archivées</label>
+      <span style="flex:1"></span><small style="align-self:center;color:var(--mut)">${list.length} tâche(s) · màj ${new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</small>
+      <button class="b" id="rf" title="Actualiser">↻</button></div>
+      <div id="list">${list.map(t=>{const p=pname(t.project_id);return`<div class="row ${t.disposition==='done'?'done':''}">
+        <input type="checkbox" title="Ajouter à l'ordre du jour" ${inAg(t.id)?'checked':''} onchange="toggleAg('${t.id}',this.checked)">
+        <button class="ic" title="Terminer" onclick="act('${t.id}','complete')">${t.disposition==='done'?'✅':'⬜'}</button>
+        <div class="t"><b>${esc(t.title)}</b><small>${t.due_date?'📅 '+esc(t.due_date)+' · ':''}${p?`<span class="dot" style="display:inline-block;background:${p.color}"></span> ${esc(p.name)}`:''}</small></div>
+        ${statBadge(t.id)}${t.is_urgent?'<span class="tag u">urgent</span>':''}<span class="tag">${DISP[t.disposition]||t.disposition}</span>
+        <button class="ic" title="Reporter à demain" onclick="later('${t.id}')">⏰</button>
+        <button class="ic" title="Modifier" onclick="editTask('${t.id}')">✏️</button>
+        <button class="ic" title="${t.archived?'Désarchiver':'Archiver'}" onclick="act('${t.id}','${t.archived?'unarchive':'archive'}')">📦</button>
+        <button class="ic d" title="Supprimer" onclick="delTask('${t.id}')">🗑️</button></div>`}).join('')||'<div class="empty">Aucune tâche</div>'}</div>
+      ${more?'<div class="empty">Plus de 1000 tâches : affine avec les filtres.</div>':''}`;
+    $('#add').onclick=guard(async()=>{const v=$('#nt').value.trim();if(!v)return;
+      await api('/tasks',{method:'POST',body:{title:v,...(state.proj?{project_id:state.proj}:{})},headers:{'Idempotency-Key':uuid()}});toast('Tâche créée');viewTasks()});
+    $('#nt').onkeydown=e=>{if(e.key==='Enter')$('#add').click()};
+    $('#rf').onclick=refreshTasks;
+    $('#fd').onchange=e=>{state.disp=e.target.value;viewTasks()};
+    $('#fp').onchange=e=>{state.proj=e.target.value;viewTasks()};
+    $('#fa').onchange=e=>{state.arch=e.target.checked;viewTasks()};
+  }catch(e){m.innerHTML=`<div class="empty">⚠️ ${esc(e.message)}</div>`}
+}
+window.act=guard(async(id,a)=>{await write('/tasks/'+id+'/'+a,'POST');viewTasks()});
+window.later=guard(async(id)=>{const d=new Date();d.setDate(d.getDate()+1);d.setHours(8,0,0,0);
+  await write('/tasks/'+id+'/later','POST',{until:d.toISOString()});toast('Reporté à demain 8h');viewTasks()});
+window.delTask=guard(async(id)=>{if(!confirm('Supprimer définitivement ?'))return;await write('/tasks/'+id,'DELETE');viewTasks()});
+window.editTask=guard(async(id)=>{
+  const t=await api('/tasks/'+id);const f=$('#frm');
+  f.innerHTML=`<h3>Modifier la tâche</h3>
+   <label>Titre</label><input name="title" value="${esc(t.title)}" maxlength="200" required>
+   <label>Notes</label><textarea name="notes" rows="3">${esc(t.notes)}</textarea>
+   <label>Statut</label><select name="disposition">${Object.entries(DISP).map(([k,v])=>`<option value="${k}" ${t.disposition===k?'selected':''}>${v}</option>`).join('')}</select>
+   <label>Projet</label><select name="project_id"><option value="">—</option>${projects.map(p=>`<option value="${p.id}" ${t.project_id===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
+   <label>Échéance</label><input type="date" name="due_date" value="${esc((t.due_date||'').slice(0,10))}">
+   <label><input type="checkbox" name="is_urgent" ${t.is_urgent?'checked':''}> Urgent</label>
+   <div class="bar" style="margin-top:14px;justify-content:flex-end"><button class="b" value="cancel">Annuler</button><button class="b p" id="ok" value="ok">Enregistrer</button></div>`;
+  $('#dlg').showModal();
+  $('#ok').onclick=guard(async e=>{e.preventDefault();const fd=new FormData(f);
+    const body={title:fd.get('title'),notes:fd.get('notes')||null,disposition:fd.get('disposition'),project_id:fd.get('project_id')||null,due_date:fd.get('due_date')||null,is_urgent:fd.has('is_urgent')};
+    await write('/tasks/'+id,'PATCH',body);$('#dlg').close();toast('Enregistré');viewTasks()});
+});
+
+async function viewProjects(){
+  const m=$('#main');
+  try{
+    projects=(await api('/projects',{query:{limit:100}})).data||[];
+    m.innerHTML=`<div class="bar"><input id="np" placeholder="Nouveau projet…" style="flex:1"><button class="b p" id="addp">Créer</button></div>
+    ${projects.map(p=>`<div class="row"><span class="dot" style="background:${p.color}"></span><div class="t"><b>${esc(p.name)}</b><small>${p.target_completion_date?'🎯 '+esc(p.target_completion_date):''}</small></div>
+      <button class="ic" title="Archiver" onclick="archP('${p.id}')">📦</button><button class="ic d" onclick="delP('${p.id}')">🗑️</button></div>`).join('')||'<div class="empty">Aucun projet</div>'}`;
+    $('#addp').onclick=guard(async()=>{const v=$('#np').value.trim();if(!v)return;
+      await api('/projects',{method:'POST',body:{name:v},headers:{'Idempotency-Key':uuid()}});viewProjects()});
+  }catch(e){m.innerHTML=`<div class="empty">⚠️ ${esc(e.message)}</div>`}
+}
+window.archP=guard(async id=>{await write('/projects/'+id,'PATCH',{archived:true});viewProjects()});
+window.delP=guard(async id=>{if(!confirm('Supprimer le projet ? (les tâches sont conservées)'))return;await write('/projects/'+id,'DELETE');viewProjects()});
+
+async function viewWorkflows(){
+  const m=$('#main');
+  try{
+    const ws=(await api('/workflows',{query:{limit:100}})).data||[];
+    const sts=await Promise.all(ws.map(w=>api('/workflows/'+w.id+'/statuses').then(r=>r.data||[]).catch(()=>[])));
+    m.innerHTML=ws.map((w,i)=>`<div class="row" style="display:block"><b>${esc(w.emoji||'')} ${esc(w.name)}</b> <small>${esc(w.description||'')}</small>
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${sts[i].map(s=>`<span class="tag">${esc(s.emoji||'')} ${esc(s.name)} · ${DISP[s.disposition]||s.disposition}</span>`).join('')}</div></div>`).join('')||'<div class="empty">Aucun workflow</div>';
+  }catch(e){m.innerHTML=`<div class="empty">⚠️ ${esc(e.message)}</div>`}
+}
+
+
+// ===== Ordre du jour =====
+let AG=JSON.parse(localStorage.getItem('nyb_agenda')||'null')||{title:'',date:'',time:'09:00',location:'',attendees:'',items:[]};
+const saveAg=()=>{localStorage.setItem('nyb_agenda',JSON.stringify(AG));$('#cnt').textContent=AG.items.length||''};
+const inAg=id=>AG.items.some(i=>i.id===id);
+window.toggleAg=(id,on)=>{
+  if(on&&!inAg(id)){const t=cache[id];AG.items.push({id,title:t.title,min:t.estimated_minutes||10,note:''})}
+  if(!on)AG.items=AG.items.filter(i=>i.id!==id);
+  saveAg();
+};
+const pad=n=>String(n).padStart(2,'0');
+const totalMin=()=>AG.items.reduce((a,i)=>a+(+i.min||0),0);
+function agendaText(){
+  const d=AG.date?new Date(AG.date+'T'+(AG.time||'09:00')):null;
+  const ds=d?d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})+' à '+AG.time:'';
+  let t=`Ordre du jour — ${AG.title||'Réunion'}\n${ds}${AG.location?' · '+AG.location:''}\n\n`;
+  let cur=d?new Date(d):null;
+  AG.items.forEach((i,k)=>{
+    const h=cur?`${pad(cur.getHours())}:${pad(cur.getMinutes())} `:'';
+    t+=`${k+1}. ${h}${i.title} (${i.min} min)${i.note?'\n   → '+i.note:''}\n`;
+    if(cur)cur=new Date(cur.getTime()+i.min*60000);
+  });
+  return t+`\nDurée totale : ${totalMin()} min`;
+}
+const icsDate=d=>d.toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');
+const icsEsc=s=>String(s).replace(/\\/g,'\\\\').replace(/;/g,'\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n');
+const fold=l=>{const o=[];while(l.length>73){o.push(l.slice(0,73));l=' '+l.slice(73)}o.push(l);return o.join('\r\n')};
+function mails(){return AG.attendees.split(/[,;\s]+/).filter(x=>x.includes('@'))}
+function startEnd(){const st=new Date(AG.date+'T'+(AG.time||'09:00'));return [st,new Date(st.getTime()+Math.max(totalMin(),15)*60000)]}
+function ics(){
+  const [st,en]=startEnd();
+  const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Nyblit Agenda//FR','METHOD:REQUEST','BEGIN:VEVENT',
+   'UID:'+uuid()+'@nyblit-agenda','DTSTAMP:'+icsDate(new Date()),'DTSTART:'+icsDate(st),'DTEND:'+icsDate(en),
+   'SUMMARY:'+icsEsc(AG.title||'Réunion'),'DESCRIPTION:'+icsEsc(agendaText()),
+   ...(AG.location?['LOCATION:'+icsEsc(AG.location)]:[]),
+   ...mails().map(m=>'ATTENDEE;CN='+m+';ROLE=REQ-PARTICIPANT;RSVP=TRUE:mailto:'+m),
+   'END:VEVENT','END:VCALENDAR'];
+  return L.map(fold).join('\r\n')+'\r\n';
+}
+async function trackSent(){
+  if(!AG.items.length)return;
+  if(!AG.id){AG.id=uuid();saveAg()}
+  try{const r=await fetch('stats.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agenda_id:AG.id,task_ids:AG.items.map(i=>i.id)})});
+    if(r.ok){STATS=await r.json();toast('Compté dans les stats')}}catch{}
+}
+function needDate(){if(!AG.date){toast('Choisis une date',true);return false}if(!AG.items.length){toast('Ordre du jour vide',true);return false}return true}
+window.move=(k,d)=>{const j=k+d;if(j<0||j>=AG.items.length)return;[AG.items[k],AG.items[j]]=[AG.items[j],AG.items[k]];saveAg();viewAgenda()};
+window.rmAg=k=>{AG.items.splice(k,1);saveAg();viewAgenda()};
+function viewAgenda(){
+  const m=$('#main');
+  m.innerHTML=`<div class="row" style="display:block">
+    <div class="bar"><input id="ag_t" placeholder="Titre de la réunion" value="${esc(AG.title)}" style="flex:1;min-width:200px">
+     <input type="date" id="ag_d" value="${esc(AG.date)}"><input type="time" id="ag_h" value="${esc(AG.time)}"></div>
+    <div class="bar" style="margin:0"><input id="ag_l" placeholder="Lieu / lien Teams" value="${esc(AG.location)}" style="flex:1;min-width:160px">
+     <input id="ag_a" placeholder="Participants (e-mails séparés par , )" value="${esc(AG.attendees)}" style="flex:2;min-width:220px"></div></div>
+   <div id="agl">${AG.items.map((i,k)=>`<div class="row"><b style="width:22px">${k+1}.</b>
+     <div class="t"><input data-k="${k}" data-f="title" value="${esc(i.title)}" style="width:100%;font-weight:600">
+       <input data-k="${k}" data-f="note" placeholder="Note / décision attendue…" value="${esc(i.note)}" style="width:100%;margin-top:4px"></div>
+     <input type="number" min="1" data-k="${k}" data-f="min" value="${i.min}" style="width:70px"><small>min</small>
+     <button class="ic" onclick="move(${k},-1)">▲</button><button class="ic" onclick="move(${k},1)">▼</button><button class="ic d" onclick="rmAg(${k})">✖</button></div>`).join('')
+     ||'<div class="empty">Coche des tâches dans l\'onglet Tâches pour les ajouter ici.</div>'}</div>
+   <div class="bar"><b style="align-self:center">Total : <span id="tot">${totalMin()}</span> min</b>
+     <span style="flex:1"></span>
+     <button class="b p" id="b_start">▶ Démarrer la réunion</button><button class="b" id="b_copy">📋 Copier</button><button class="b" id="b_mail">✉️ Mail</button>
+     <button class="b" id="b_ics">📅 Invitation .ics</button><button class="b p" id="b_owa">Créer dans Outlook</button>
+     <button class="b d" id="b_clr">Vider</button></div>`;
+  const bind=(id,f)=>$(id).oninput=e=>{AG[f]=e.target.value;saveAg()};
+  bind('#ag_t','title');bind('#ag_d','date');bind('#ag_h','time');bind('#ag_l','location');bind('#ag_a','attendees');
+  $('#agl').oninput=e=>{const k=e.target.dataset.k,f=e.target.dataset.f;if(k==null)return;AG.items[k][f]=f==='min'?(+e.target.value||0):e.target.value;saveAg();$('#tot').textContent=totalMin()};
+  $('#b_start').onclick=startMeeting;
+  $('#b_copy').onclick=()=>{copyText(agendaText())};
+  $('#b_mail').onclick=()=>{trackSent();
+    const body=agendaText()+(SIGNATURE?'\n\n'+SIGNATURE:'');
+    location.href='mailto:'+mails().join(',')+'?subject='+encodeURIComponent('Ordre du jour — '+(AG.title||'Réunion'))+'&body='+encodeURIComponent(body)};
+  $('#b_ics').onclick=()=>{if(!needDate())return;trackSent();
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([ics()],{type:'text/calendar'}));
+    a.download=(AG.title||'reunion').replace(/[^\w\-]+/g,'_')+'.ics';a.click()};
+  $('#b_owa').onclick=()=>{if(!needDate())return;trackSent();const [st,en]=startEnd();
+    const q=qs({path:'/calendar/action/compose',rru:'addevent',subject:AG.title||'Réunion',body:agendaText(),startdt:st.toISOString(),enddt:en.toISOString(),location:AG.location,to:mails().join(';')});
+    window.open('https://outlook.office.com/calendar/0/deeplink/compose?'+q,'_blank')};
+  $('#b_clr').onclick=()=>{if(confirm("Vider l'ordre du jour ?")){AG.items=[];AG.id='';saveAg();viewAgenda()}};
+}
+saveAg();
+
+// ===== Réunions =====
+let MEET={},CURID=null,saveT=null;
+const fdate=(d,t)=>{if(!d)return'';const x=new Date(d+'T'+(t||'00:00'));return x.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})+(t?' à '+t:'')};
+const recips=m=>(m.attendees||'').split(/[,;\s]+/).filter(x=>x.includes('@'));
+const syncNav=()=>document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x.dataset.v===view));
+async function loadMeetings(){try{MEET=await (await fetch('meetings.php')).json()}catch(e){toast('Réunions indisponibles : '+e.message,true)}}
+async function persist(m){
+  const r=await fetch('meetings.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({meeting:m})});
+  if(!r.ok)throw new Error('Enregistrement impossible ('+r.status+')');
+}
+function autosave(){
+  const el=$('#sv');if(el)el.textContent='…';
+  clearTimeout(saveT);
+  saveT=setTimeout(async()=>{try{await persist(MEET[CURID]);const e=$('#sv');if(e)e.textContent='Enregistré ✓'}catch(e){toast(e.message,true)}},600);
+}
+window.startMeeting=guard(async()=>{
+  if(!AG.items.length){toast('Ordre du jour vide',true);return}
+  if(!AG.date){toast('Choisis une date',true);return}
+  await trackSent();
+  const id=AG.id||uuid();
+  const m={id,title:AG.title||'Réunion',date:AG.date,time:AG.time,location:AG.location,attendees:AG.attendees,status:'running',
+    started_at:new Date().toISOString(),notes:'',
+    items:AG.items.map(i=>({id:i.id,title:i.title,min:i.min,note:i.note||'',comment:'',done:false}))};
+  await persist(m);MEET[id]=m;
+  AG.items=[];AG.id='';saveAg();
+  CURID=id;view='meetings';syncNav();render();
+});
+window.openMeeting=id=>{CURID=id;viewMeetings()};
+window.delMeeting=guard(async id=>{
+  if(!confirm('Supprimer cette réunion et ses commentaires ?'))return;
+  await fetch('meetings.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delete:id})});
+  CURID=null;viewMeetings();
+});
+async function viewMeetings(){
+  const M=$('#main');
+  await loadMeetings();
+  if(CURID&&MEET[CURID])return viewMeeting();
+  const list=Object.values(MEET).sort((a,b)=>((b.date||'')+(b.time||'')).localeCompare((a.date||'')+(a.time||'')));
+  const ST={running:'En cours',done:'Terminée'};
+  M.innerHTML=list.map(x=>`<div class="row"><div class="t"><b>${esc(x.title)}</b><small>${esc(fdate(x.date,x.time))} · ${x.items.length} point(s)</small></div>
+    <span class="tag ${x.status==='running'?'u':''}">${ST[x.status]||esc(x.status)}</span>
+    <button class="b p" onclick="openMeeting('${esc(x.id)}')">Ouvrir</button>
+    <button class="ic d" title="Supprimer" onclick="delMeeting('${esc(x.id)}')">🗑️</button></div>`).join('')
+    ||'<div class="empty">Aucune réunion. Prépare un ordre du jour puis clique sur « Démarrer la réunion ».</div>';
+}
+function recapText(m){
+  const L=[`Compte rendu — ${m.title}`,`${fdate(m.date,m.time)}${m.location?' · '+m.location:''}`];
+  const p=(m.attendees||'').split(/[,;]+/).map(s=>s.trim()).filter(Boolean);
+  if(p.length)L.push('Participants : '+p.join(', '));
+  L.push('');
+  m.items.forEach((i,k)=>{
+    L.push(`${k+1}. ${i.title} — ${i.done?'traité':'à suivre'}`);
+    if(i.comment)L.push(...i.comment.split('\n').map(l=>'   → '+l));
+  });
+  if(m.notes)L.push('','Notes :',m.notes);
+  return L.join('\n');
+}
+function viewMeeting(){
+  const m=MEET[CURID],M=$('#main'),done=m.status==='done';
+  M.innerHTML=`<div id="mt">
+   <div class="bar"><button class="b" id="m_back">← Réunions</button>
+     <b style="align-self:center;flex:1">${esc(m.title)} <small style="color:var(--mut);font-weight:400">${esc(fdate(m.date,m.time))}</small></b>
+     <span id="sv" class="tag">Enregistré ✓</span>
+     <button class="b ${done?'':'p'}" id="m_toggle">${done?'Rouvrir':'Clôturer la réunion'}</button></div>
+   ${m.items.map((i,k)=>`<div class="row" style="display:block">
+     <div style="display:flex;gap:10px;align-items:center">
+       <input type="checkbox" ${i.done?'checked':''} data-k="${k}" data-f="done" title="Point traité">
+       <b style="flex:1;${i.done?'text-decoration:line-through;color:var(--mut)':''}">${k+1}. ${esc(i.title)}</b>
+       <small>${esc(i.min)} min</small>
+       <button class="ic" title="Terminer la tâche dans Nyblit" onclick="mTask(${k},'complete')">✅</button>
+       <button class="ic" title="Reporter la tâche à demain" onclick="mTask(${k},'later')">⏰</button></div>
+     ${i.note?`<small style="color:var(--mut)">Prévu : ${esc(i.note)}</small>`:''}
+     <textarea data-k="${k}" data-f="comment" rows="2" placeholder="Commentaires / décisions…" style="width:100%;margin-top:6px">${esc(i.comment)}</textarea></div>`).join('')}
+   <div class="row" style="display:block"><b>Notes générales</b>
+     <textarea id="m_notes" rows="3" style="width:100%;margin-top:6px" placeholder="Divers, points non prévus…">${esc(m.notes)}</textarea></div>
+   <div class="row" style="display:block"><b>Compte rendu</b>
+     <pre id="m_pre" style="white-space:pre-wrap;font:inherit;margin:8px 0">${esc(recapText(m))}</pre>
+     <div class="bar" style="margin:0"><button class="b p" id="m_owa">✉️ Mail via Outlook</button><button class="b" id="m_mail">Mail (application)</button>
+       <button class="b" id="m_copy">📋 Copier</button><button class="b" id="m_sync">📝 Commentaires → notes Nyblit</button></div></div></div>`;
+  $('#m_back').onclick=()=>{CURID=null;viewMeetings()};
+  $('#m_toggle').onclick=guard(async()=>{m.status=done?'running':'done';if(!done)m.ended_at=new Date().toISOString();await persist(m);viewMeeting()});
+  $('#mt').oninput=e=>{
+    const t=e.target;
+    if(t.id==='m_notes')m.notes=t.value;
+    else if(t.dataset.f)m.items[+t.dataset.k][t.dataset.f]=t.type==='checkbox'?t.checked:t.value;
+    else return;
+    if(t.type==='checkbox')viewMeeting();else $('#m_pre').textContent=recapText(m);
+    autosave();
+  };
+  const subj='Compte rendu — '+m.title,body=()=>recapText(m)+(SIGNATURE?'\n\n'+SIGNATURE:'');
+  $('#m_owa').onclick=()=>window.open('https://outlook.office.com/mail/deeplink/compose?'+qs({to:recips(m).join(';'),subject:subj,body:body()}),'_blank');
+  $('#m_mail').onclick=()=>{location.href='mailto:'+recips(m).join(',')+'?'+qs({subject:subj,body:body()})};
+  $('#m_copy').onclick=()=>copyText(recapText(m));
+  $('#m_sync').onclick=mSync;
+}
+window.mTask=guard(async(k,a)=>{
+  const m=MEET[CURID],i=m.items[k];
+  if(a==='later'){
+    const d=new Date();d.setDate(d.getDate()+1);d.setHours(8,0,0,0);
+    await write('/tasks/'+i.id+'/later','POST',{until:d.toISOString()});toast('Tâche reportée à demain 8h');
+  }else{
+    await write('/tasks/'+i.id+'/complete','POST');i.done=true;await persist(m);viewMeeting();toast('Tâche terminée dans Nyblit');
+  }
+});
+window.mSync=guard(async()=>{
+  const m=MEET[CURID];let n=0;
+  for(const i of m.items){
+    const c=(i.comment||'').trim();if(!c||i.synced===c)continue;
+    const cur=await api('/tasks/'+i.id);
+    const stamp=`[${new Date(m.date+'T12:00').toLocaleDateString('fr-FR')} · ${m.title}] ${c}`;
+    await api('/tasks/'+i.id,{method:'PATCH',body:{notes:(cur.notes?cur.notes+'\n\n':'')+stamp},headers:cur._etag?{'If-Match':cur._etag}:{}});
+    i.synced=c;n++;await persist(m);
+  }
+  toast(n?n+' tâche(s) mise(s) à jour dans Nyblit':'Rien à reporter');
+});
+
+// ===== Actualisation automatique des tâches (10 min) =====
+async function refreshTasks(){
+  try{projects=(await api('/projects',{query:{limit:100}})).data||[]}catch{}
+  await viewTasks();
+}
+const busy=()=>{const dlg=$('#dlg');const nt=$('#nt');return (dlg&&dlg.open)||(nt&&nt.value.trim())};
+setInterval(()=>{if(!document.hidden&&view==='tasks'&&!busy())refreshTasks()},10*60*1000);
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden&&view==='tasks'&&Date.now()-LASTLOAD>10*60*1000&&!busy())refreshTasks();
+});
+
+(async()=>{try{const me=await api('/me');$('#me').textContent=me.email||me.name||(me.user&&(me.user.email||me.user.name))||'connecté'}catch(e){$('#me').textContent='⚠️ '+e.message}render()})();
+</script></body></html>
