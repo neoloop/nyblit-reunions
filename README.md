@@ -17,7 +17,10 @@ et envoyer le **compte rendu** par mail.
 - **Ordre du jour** : sélection de tâches, durées, notes, ordre, puis envoi par invitation `.ics`,
   lien Outlook web, mail ou copie du texte.
 - **Réunions** : mode « réunion en cours » avec commentaires par point, compte rendu généré en direct,
-  envoi par mail, report des commentaires dans les notes des tâches Nyblit.
+  envoi par mail.
+- **Retour vers Nyblit** : depuis l'interface, les commentaires saisis pendant la réunion sont renvoyés dans les notes
+  des tâches (bouton « Commentaires → notes Nyblit », ajoutés à la suite avec la date et le titre de la réunion, sans écraser l'existant).
+  Pendant la séance, ✅ termine la tâche et ⏰ la reporte au lendemain 8h ; l'échéance se modifie aussi depuis la fiche de la tâche (✏️).
 - **Collaborateurs** : annuaire (nom + e-mail, ajout en lot collé depuis Outlook). Dans l'ordre du jour et la réunion,
   on sélectionne les participants en un clic : leurs e-mails sont remplis dans l'invitation, le mail et le compte rendu.
 - **Statistiques** : nombre de fois où chaque tâche a été mise dans un ordre du jour.
@@ -85,7 +88,10 @@ and send the **minutes** by e-mail.
 - **Agenda**: pick tasks, set durations, notes and order, then send it as an `.ics` invitation,
   an Outlook web link, an e-mail, or copy the text.
 - **Meetings**: a "meeting in progress" mode with a comment field per item, minutes generated live,
-  e-mail sending, and pushing comments back into the Nyblit task notes.
+  and e-mail sending.
+- **Sync back to Nyblit**: from the UI, comments typed during a meeting are pushed into the Nyblit task notes
+  ("Commentaires → notes Nyblit" button, appended with the date and meeting title, never overwriting existing notes).
+  During the meeting, ✅ completes the task and ⏰ postpones it to tomorrow 8am; the due date can also be changed from the task edit form (✏️).
 - **Collaborators**: a directory (name + e-mail, bulk paste from Outlook). On the agenda and in meetings you pick
   attendees with one click: their e-mails are filled into the invitation, the mail and the minutes.
 - **Statistics**: how many times each task has been put on an agenda.
